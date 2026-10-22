@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+/* Design tokens - all text/background pairs meet WCAG 2.1 AA contrast. */
+@theme {
+  --color-brand: #0f766e;
+  --color-brand-dark: #115e59;
+  --color-brand-light: #ccfbf1;
+  --color-ink: #1f2937;
+  --color-muted: #4b5563;
+  --color-line: #e5e7eb;
+  --color-surface: #f3f4f6;
+  --color-canvas: #f8fafc;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/* Visible focus states for keyboard users */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0.5rem;
+  z-index: 100;
+}
+.skip-link:focus {
+  left: 0.5rem;
+  background: white;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+}
+
+/* Leaflet: keep the map under modals and headers */
+.leaflet-container {
+  z-index: 0;
+  font-family: inherit;
+}
+.day-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 2px solid white;
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

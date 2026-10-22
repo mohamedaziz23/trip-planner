@@ -1,0 +1,22 @@
+# dependencies and builds
+node_modules/
+.next/
+dist/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# secrets: only the .env.example files are committed
+.env
+.env.*
+!.env.example
+
+# runtime data
+trip-planner-api/uploads/*
+!trip-planner-api/uploads/.gitkeep
+
+# local tooling
+.claude/
+.vscode/
+.DS_Store
+npm-debug.log*
