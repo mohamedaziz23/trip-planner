@@ -173,6 +173,28 @@ export async function download(path: string, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
+/**
+ * POSTs to a streaming (text/plain) endpoint and invokes `onChunk` as text
+ * arrives. Retries once after refreshing an expired token. Throws ApiError /
+ * NetworkError like `request` when the response is not a stream.
+ */
+export async function streamText(path: string, onChunk: (text: string) => void, signal?: AbortSignal) {
+  let token = accessToken ?? (await refreshSession());
+  let res = await send(path, { method: 'POST', signal }, token);
+  if (res.status === 401) {
+    token = await refreshSession();
+    if (token) res = await send(path, { method: 'POST', signal }, token);
+  }
+  if (!res.ok || !res.body) return void (await parse(res));
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    onChunk(decoder.decode(value, { stream: true }));
+  }
+}
+
 export async function uploadImages(files: File[], folder: 'receipts' | 'journal' | 'misc') {
   const form = new FormData();
   files.forEach((f) => form.append('files', f));

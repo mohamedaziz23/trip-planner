@@ -39,6 +39,8 @@ export const env = {
     pass: str('SMTP_PASS', ''),
     from: str('MAIL_FROM', 'Trip Planner <no-reply@tripplanner.local>'),
   },
+  geminiApiKey: str('GEMINI_API_KEY', ''),
+  geminiModel: str('GEMINI_MODEL', 'gemini-2.5-flash'),
   ratesApiUrl: str('RATES_API_URL', 'https://open.er-api.com/v6/latest'),
   osrmUrl: str('OSRM_URL', 'https://router.project-osrm.org'),
   nominatimUrl: str('NOMINATIM_URL', 'https://nominatim.openstreetmap.org'),

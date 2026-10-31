@@ -1,13 +1,13 @@
 'use client';
 
-import { Crosshair, ImagePlus, MapPin, NotebookPen, Pencil, Plus, Trash2, X } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { BookOpen, Crosshair, ImagePlus, MapPin, NotebookPen, Pencil, Plus, Presentation, Sparkles, Trash2, X } from 'lucide-react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useTripContext } from '@/components/trips/TripContext';
 import { useToast } from '@/components/Toaster';
-import { Avatar, Button, EmptyState, Field, Input, LoadingBlock, Modal, Select, Textarea } from '@/components/ui';
-import { errorMessage, uploadImages } from '@/lib/api';
+import { Alert, Avatar, Button, EmptyState, Field, Input, LoadingBlock, Modal, Select, Textarea } from '@/components/ui';
+import { api, download, errorMessage, streamText, uploadImages } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { MOODS } from '@/lib/constants';
+import { MOODS, suggestMood } from '@/lib/constants';
 import { formatDate, imageUrl, toDateInput } from '@/lib/format';
 import { useJournal, usePlaces } from '@/lib/hooks';
 import { objectId } from '@/lib/objectId';
@@ -30,6 +30,35 @@ function EntryForm({ trip, places, user, initial, onDone }: { trip: Trip; places
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Until the user picks a mood themselves, follow what they write (existing entries keep their saved mood).
+  const [moodTouched, setMoodTouched] = useState(Boolean(initial));
+  const [enhancing, setEnhancing] = useState(false);
+
+  /** Live reaction detection: set the mood from the text unless the user has chosen one. */
+  function autoMood(text: string) {
+    if (moodTouched) return;
+    const suggestion = suggestMood(text);
+    if (suggestion) setMood(suggestion);
+  }
+
+  /** Sends the draft to the AI to fix spelling/grammar and polish the wording. */
+  async function enhance() {
+    if (!body.trim()) return;
+    setEnhancing(true);
+    try {
+      const res = await api<{ title: string; body: string }>(`/trips/${trip._id}/journal/enhance`, {
+        method: 'POST',
+        body: { title: title.trim(), body: body.trim() },
+      });
+      setBody(res.body);
+      if (res.title) setTitle(res.title);
+      toast('Entry polished');
+    } catch (err) {
+      toast(errorMessage(err), 'error');
+    } finally {
+      setEnhancing(false);
+    }
+  }
 
   async function addPhotos(files: FileList | null) {
     if (!files?.length) return;
@@ -105,10 +134,50 @@ function EntryForm({ trip, places, user, initial, onDone }: { trip: Trip; places
           )}
         </Field>
       </div>
-      <Field label="Title (optional)">{(id) => <Input id={id} value={title} onChange={(e) => setTitle(e.target.value)} />}</Field>
-      <Field label="Your day" error={error ?? undefined}>
-        {(id, d) => <Textarea id={id} aria-describedby={d} rows={6} value={body} onChange={(e) => setBody(e.target.value)} />}
+      <Field label="Title (optional)">
+        {(id) => (
+          <Input
+            id={id}
+            value={title}
+            spellCheck
+            autoCapitalize="sentences"
+            onChange={(e) => {
+              setTitle(e.target.value);
+              autoMood(`${e.target.value} ${body}`);
+            }}
+          />
+        )}
       </Field>
+      <Field label="Your day" error={error ?? undefined}>
+        {(id, d) => (
+          <Textarea
+            id={id}
+            aria-describedby={d}
+            rows={6}
+            value={body}
+            spellCheck
+            autoCapitalize="sentences"
+            onChange={(e) => {
+              setBody(e.target.value);
+              autoMood(`${title} ${e.target.value}`);
+            }}
+          />
+        )}
+      </Field>
+      <div className="-mt-2 flex justify-end">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          icon={<Sparkles className="size-4" aria-hidden />}
+          loading={enhancing}
+          disabled={!online || !body.trim() || saving}
+          onClick={enhance}
+          title={!online ? 'Connect to the internet to use AI' : 'Fix spelling and polish the wording'}
+        >
+          Enhance with AI
+        </Button>
+      </div>
       <fieldset>
         <legend className="mb-1 text-sm font-medium">Mood</legend>
         <div className="flex gap-2">
@@ -116,16 +185,24 @@ function EntryForm({ trip, places, user, initial, onDone }: { trip: Trip; places
             <button
               key={m.value}
               type="button"
-              onClick={() => setMood(m.value)}
+              onClick={() => {
+                setMood(m.value);
+                setMoodTouched(true);
+              }}
               aria-pressed={mood === m.value}
               aria-label={m.label}
               title={m.label}
-              className={`rounded-lg border px-2.5 py-1.5 text-xl ${mood === m.value ? 'border-brand bg-brand-light' : 'border-line bg-white'}`}
+              className={`rounded-lg border px-2.5 py-1.5 text-xl transition-colors ${mood === m.value ? 'border-brand bg-brand-light' : 'border-line bg-white'}`}
             >
               {m.emoji}
             </button>
           ))}
         </div>
+        {!moodTouched && (
+          <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-muted">
+            <Sparkles className="size-3.5 text-brand" aria-hidden /> Mood follows your words — tap one to set it yourself
+          </p>
+        )}
       </fieldset>
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="secondary" size="sm" loading={locating} onClick={locate} icon={<Crosshair className="size-4" aria-hidden />}>
@@ -176,13 +253,89 @@ function EntryForm({ trip, places, user, initial, onDone }: { trip: Trip; places
   );
 }
 
+/** Streams an AI narrative of the whole trip, and downloads it as a book. Read-only; needs network. */
+function StoryModal({ trip, onClose }: { trip: Trip; onClose: () => void }) {
+  const toast = useToast();
+  const { online } = useSyncStatus();
+  const [text, setText] = useState('');
+  const [state, setState] = useState<'loading' | 'streaming' | 'done' | 'error'>('loading');
+  const [error, setError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState<'pdf' | 'pptx' | null>(null);
+
+  async function downloadBook(format: 'pdf' | 'pptx') {
+    setDownloading(format);
+    try {
+      const slug = trip.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'trip';
+      await download(`/trips/${trip._id}/journal/book?format=${format}`, `${slug}-story.${format}`);
+    } catch (err) {
+      toast(errorMessage(err), 'error');
+    } finally {
+      setDownloading(null);
+    }
+  }
+
+  useEffect(() => {
+    const controller = new AbortController();
+    streamText(
+      `/trips/${trip._id}/journal/story`,
+      (chunk) => {
+        setState('streaming');
+        setText((t) => t + chunk);
+      },
+      controller.signal,
+    )
+      .then(() => setState((s) => (s === 'error' ? s : 'done')))
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        setError(errorMessage(err));
+        setState('error');
+      });
+    return () => controller.abort();
+  }, [trip._id]);
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Your trip story"
+      wide
+      footer={
+        <>
+          <Button variant="secondary" icon={<BookOpen className="size-4" aria-hidden />} loading={downloading === 'pdf'} disabled={!online || downloading !== null} onClick={() => downloadBook('pdf')}>
+            PDF book
+          </Button>
+          <Button variant="secondary" icon={<Presentation className="size-4" aria-hidden />} loading={downloading === 'pptx'} disabled={!online || downloading !== null} onClick={() => downloadBook('pptx')}>
+            Slides
+          </Button>
+          <Button variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+        </>
+      }
+    >
+      {error ? (
+        <Alert tone="error">{error}</Alert>
+      ) : state === 'loading' ? (
+        <LoadingBlock label="Writing your story…" />
+      ) : (
+        <p className="whitespace-pre-line text-sm leading-relaxed">
+          {text}
+          {state === 'streaming' && <span className="ml-0.5 inline-block animate-pulse">▍</span>}
+        </p>
+      )}
+    </Modal>
+  );
+}
+
 export default function JournalPage() {
   const { trip } = useTripContext();
   const { user } = useAuth();
   const toast = useToast();
+  const { online } = useSyncStatus();
   const entries = useJournal(trip._id);
   const places = usePlaces(trip._id) ?? [];
   const [editing, setEditing] = useState<JournalEntry | 'new' | null>(null);
+  const [story, setStory] = useState(false);
 
   if (!entries || !user) return <LoadingBlock />;
   const placeName = (id: string | null) => places.find((p) => p._id === id)?.name;
@@ -191,9 +344,21 @@ export default function JournalPage() {
     <div className="mx-auto max-w-3xl space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Travel journal</h2>
-        <Button size="sm" icon={<Plus className="size-4" aria-hidden />} onClick={() => setEditing('new')}>
-          New entry
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<Sparkles className="size-4" aria-hidden />}
+            onClick={() => setStory(true)}
+            disabled={!online || entries.length === 0}
+            title={!online ? 'Connect to the internet to generate a story' : undefined}
+          >
+            Generate story
+          </Button>
+          <Button size="sm" icon={<Plus className="size-4" aria-hidden />} onClick={() => setEditing('new')}>
+            New entry
+          </Button>
+        </div>
       </div>
 
       {entries.length === 0 ? (
@@ -268,6 +433,8 @@ export default function JournalPage() {
       <Modal open={editing !== null} onClose={() => setEditing(null)} title={editing === 'new' ? 'New journal entry' : 'Edit entry'} wide>
         {editing && <EntryForm trip={trip} places={places} user={user} initial={editing === 'new' ? undefined : editing} onDone={() => setEditing(null)} />}
       </Modal>
+
+      {story && <StoryModal trip={trip} onClose={() => setStory(false)} />}
     </div>
   );
 }
