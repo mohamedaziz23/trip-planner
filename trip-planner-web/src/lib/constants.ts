@@ -20,6 +20,30 @@ export const MOODS: { value: string; label: string; emoji: string }[] = [
   { value: 'tired', label: 'Tired', emoji: '😴' },
   { value: 'sad', label: 'Sad', emoji: '😢' },
 ];
+
+// Emotional keywords per mood, used to suggest a reaction from what the user writes.
+const MOOD_KEYWORDS: Record<string, string[]> = {
+  amazing: ['amazing', 'incredible', 'awesome', 'wonderful', 'fantastic', 'breathtaking', 'excited', 'thrilled', 'magical', 'stunning', 'unforgettable', 'spectacular', 'best', 'wow', 'loved', 'perfect'],
+  happy: ['happy', 'great', 'lovely', 'nice', 'enjoyed', 'enjoy', 'fun', 'glad', 'delicious', 'beautiful', 'pleasant', 'smile', 'cheerful', 'content', 'relaxing', 'sunny'],
+  tired: ['tired', 'exhausted', 'exhausting', 'sleepy', 'jet lag', 'jetlag', 'drained', 'worn out', 'long day', 'aching', 'sore', 'feet hurt', 'nap'],
+  sad: ['sad', 'disappointed', 'disappointing', 'unfortunately', 'rained', 'ruined', 'miss', 'homesick', 'awful', 'terrible', 'lost', 'stressed', 'cried', 'gloomy', 'lonely'],
+};
+
+/** Suggests a mood from free text by counting emotional keywords; null when nothing stands out. */
+export function suggestMood(text: string): string | null {
+  const t = text.toLowerCase();
+  let best: string | null = null;
+  let bestScore = 0;
+  for (const [mood, words] of Object.entries(MOOD_KEYWORDS)) {
+    let score = 0;
+    for (const w of words) if (t.includes(w)) score += 1;
+    if (score > bestScore) {
+      bestScore = score;
+      best = mood;
+    }
+  }
+  return bestScore > 0 ? best : null;
+}
 export const FORUM_CATEGORIES = [
   'destinations', 'budget and tips', 'transport', 'accommodation', 'food', 'safety', 'equipment', 'trip reports',
 ];
