@@ -1,24 +1,28 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { ApiError, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { COUNTRIES, CURRENCIES } from '@/lib/constants';
 import { Alert, Button, Card, Field, Input, Select } from '@/components/ui';
 
-export default function RegisterPage() {
+function RegisterForm() {
   const { register, status } = useAuth();
   const router = useRouter();
-  const [form, setForm] = useState({ name: '', email: '', password: '', baseCurrency: 'EUR', homeCountry: 'TN' });
+  const params = useSearchParams();
+  const nextParam = params.get('next');
+  // same-site paths only (an invitation link brings people back to /invite/<token>)
+  const next = nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : '/trips';
+  const [form, setForm] = useState({ name: '', email: params.get('email') ?? '', password: '', baseCurrency: 'EUR', homeCountry: 'TN' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (status === 'authenticated') router.replace('/trips');
-  }, [status, router]);
+    if (status === 'authenticated') router.replace(next);
+  }, [status, router, next]);
 
   const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -85,10 +89,18 @@ export default function RegisterPage() {
       </form>
       <p className="mt-6 text-center text-sm text-muted">
         Already registered?{' '}
-        <Link href="/login" className="font-medium text-brand-dark hover:underline">
+        <Link href={next === '/trips' ? '/login' : `/login?next=${encodeURIComponent(next)}`} className="font-medium text-brand-dark hover:underline">
           Log in
         </Link>
       </p>
     </Card>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense>
+      <RegisterForm />
+    </Suspense>
   );
 }

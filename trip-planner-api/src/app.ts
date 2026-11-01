@@ -12,6 +12,8 @@ import authRoutes from './modules/users/auth.routes';
 import userRoutes from './modules/users/user.routes';
 import adminRoutes from './modules/users/admin.routes';
 import tripRoutes from './modules/trips/trip.routes';
+import invitationRoutes from './modules/trips/invitation.routes';
+import assistantRoutes from './modules/trips/assistant.routes';
 import placeRoutes from './modules/places/place.routes';
 import expenseRoutes from './modules/expenses/expense.routes';
 import checklistRoutes from './modules/checklist/checklist.routes';
@@ -40,6 +42,8 @@ export function createApp() {
   api.use('/admin', adminRoutes);
   api.use(userRoutes);
   api.use(tripRoutes);
+  api.use(invitationRoutes);
+  api.use(assistantRoutes);
   api.use(placeRoutes);
   api.use(expenseRoutes);
   api.use(checklistRoutes);

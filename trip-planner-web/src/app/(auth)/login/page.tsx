@@ -59,7 +59,7 @@ function LoginForm() {
       </form>
       <p className="mt-6 text-center text-sm text-muted">
         No account yet?{' '}
-        <Link href="/register" className="font-medium text-brand-dark hover:underline">
+        <Link href={next === '/trips' ? '/register' : `/register?next=${encodeURIComponent(next)}`} className="font-medium text-brand-dark hover:underline">
           Sign up
         </Link>
       </p>

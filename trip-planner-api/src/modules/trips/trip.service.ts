@@ -3,6 +3,7 @@ import { PlaceModel } from '../places/place.model';
 import { ExpenseModel } from '../expenses/expense.model';
 import { ChecklistItemModel } from '../checklist/checklist.model';
 import { JournalEntryModel } from '../journal/journal.model';
+import { TripInvitationModel } from './invitation.model';
 import { TripModel } from './trip.model';
 
 /** Deletes a trip and all of its children (places, expenses, checklist, journal). */
@@ -13,6 +14,7 @@ export async function deleteTripCascade(tripId: Types.ObjectId | string, session
   await ExpenseModel.deleteMany({ trip: tripId }, opts);
   await ChecklistItemModel.deleteMany({ trip: tripId }, opts);
   await JournalEntryModel.deleteMany({ trip: tripId }, opts);
+  await TripInvitationModel.deleteMany({ trip: tripId }, opts);
   await TripModel.deleteOne({ _id: tripId }, opts);
 }
 

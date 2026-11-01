@@ -1,15 +1,19 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Copy, ImagePlus, Link2, Link2Off, LogOut, Trash2, UserPlus, X } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { Copy, ImagePlus, Link2, Link2Off, LogOut, Pencil, Trash2, X } from 'lucide-react';
+import { useState } from 'react';
+import { InviteForm } from '@/components/trips/InviteForm';
+import { PendingInvitations } from '@/components/trips/PendingInvitations';
 import { useTripContext } from '@/components/trips/TripContext';
 import { TripForm, type TripFormValues } from '@/components/trips/TripForm';
 import { useToast } from '@/components/Toaster';
-import { Alert, Avatar, Badge, Button, Card, Field, Input } from '@/components/ui';
+import { Alert, Avatar, Badge, Button, Card, Input, Modal } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { countryName } from '@/lib/constants';
 import { db } from '@/lib/db';
+import { formatDate, formatMoney, tripDays } from '@/lib/format';
 import { deleteDoc, pullTrip, updateDoc, useSyncStatus } from '@/lib/sync';
 import type { Trip } from '@/lib/types';
 
@@ -19,10 +23,9 @@ export default function TripSettingsPage() {
   const toast = useToast();
   const router = useRouter();
   const { online } = useSyncStatus();
-  const [email, setEmail] = useState('');
-  const [inviting, setInviting] = useState(false);
-  const [inviteError, setInviteError] = useState<string | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
+  const [invitesKey, setInvitesKey] = useState(0);
+  const [editOpen, setEditOpen] = useState(false);
 
   const shareUrl = trip.shareToken ? `${typeof window !== 'undefined' ? window.location.origin : ''}/share/${trip.shareToken}` : null;
 
@@ -34,26 +37,12 @@ export default function TripSettingsPage() {
     });
     toast(online ? 'Trip saved — the checklist was updated for the new preferences' : 'Saved on this device — will sync later');
     if (online) setTimeout(() => void pullTrip(trip._id).catch(() => undefined), 800);
+    setEditOpen(false);
   }
 
   /** Online-only actions return the updated trip: store it locally too. */
   async function applyServerTrip(next: Trip) {
     await db.trips.put(next);
-  }
-
-  async function invite(e: FormEvent) {
-    e.preventDefault();
-    setInviting(true);
-    setInviteError(null);
-    try {
-      await applyServerTrip(await api<Trip>(`/trips/${trip._id}/members`, { method: 'POST', body: { email } }));
-      setEmail('');
-      toast('Participant added');
-    } catch (err) {
-      setInviteError(errorMessage(err));
-    } finally {
-      setInviting(false);
-    }
   }
 
   async function removeMember(userId: string, name: string) {
@@ -110,9 +99,42 @@ export default function TripSettingsPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <Card className="p-6">
-        <h2 className="mb-4 text-lg font-semibold">Trip details</h2>
-        <TripForm initial={trip} submitLabel="Save changes" onSubmit={save} />
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Trip details</h2>
+            <p className="text-sm text-muted">The essentials. Open the full form to change dates, budget and preferences.</p>
+          </div>
+          <Button variant="secondary" size="sm" icon={<Pencil className="size-4" aria-hidden />} onClick={() => setEditOpen(true)}>
+            See more &amp; edit
+          </Button>
+        </div>
+        <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="text-muted">Destination</dt>
+            <dd className="font-medium">
+              {trip.destination}, {countryName(trip.country)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted">Dates</dt>
+            <dd className="font-medium">
+              {formatDate(trip.startDate)} – {formatDate(trip.endDate)} · {tripDays(trip.startDate, trip.endDate)} days
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted">Budget</dt>
+            <dd className="font-medium">{trip.budget > 0 ? formatMoney(trip.budget, trip.baseCurrency) : 'No budget set'}</dd>
+          </div>
+          <div>
+            <dt className="text-muted">Currency</dt>
+            <dd className="font-medium">{trip.baseCurrency}</dd>
+          </div>
+        </dl>
       </Card>
+
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Trip details" wide>
+        <TripForm initial={trip} submitLabel="Save changes" onSubmit={save} />
+      </Modal>
 
       <Card className="p-6">
         <h2 className="mb-1 text-lg font-semibold">Cover image</h2>
@@ -146,14 +168,10 @@ export default function TripSettingsPage() {
           ))}
         </ul>
         {isOwner && (
-          <form onSubmit={invite} className="flex flex-wrap items-end gap-2">
-            <Field label="Invite by email" className="min-w-56 flex-1" error={inviteError ?? undefined} hint="They need a Trip Planner account">
-              {(id, d) => <Input id={id} aria-describedby={d} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="friend@example.com" />}
-            </Field>
-            <Button type="submit" loading={inviting} disabled={!online || !email} icon={<UserPlus className="size-4" aria-hidden />}>
-              Invite
-            </Button>
-          </form>
+          <>
+            <InviteForm trip={trip} onInvited={() => setInvitesKey((k) => k + 1)} />
+            <PendingInvitations tripId={trip._id} refreshKey={invitesKey} />
+          </>
         )}
       </Card>
 

@@ -7,6 +7,7 @@ import { randomToken } from '../../lib/tokens';
 import { imageUpload, storeImage } from '../../lib/upload';
 import { assertObjectId, body, clientUpdatedAt, escapeRegex, listQuery, objectId, query, toSort } from '../../lib/validate';
 import { currentUser, requireAuth } from '../../middleware/auth';
+import { inviteLimiter } from '../../middleware/rateLimit';
 import { isOwner, loadTripForMember, loadTripForOwner } from '../../middleware/tripAccess';
 import { UserModel } from '../users/user.model';
 import { PlaceModel } from '../places/place.model';
@@ -15,6 +16,8 @@ import { ChecklistItemModel } from '../checklist/checklist.model';
 import { JournalEntryModel } from '../journal/journal.model';
 import { syncChecklist } from '../checklist/generator';
 import { ACCOMMODATIONS, ACTIVITIES, SPECIAL_NEEDS, TRANSPORTS, TRIP_TYPES, TripModel, type TripDoc } from './trip.model';
+import { TripInvitationModel } from './invitation.model';
+import { sendTripInvitation } from './invitation.service';
 import { TRIP_POPULATE, deleteTripCascade } from './trip.service';
 import { renderTripPdf } from './export.pdf';
 
@@ -178,16 +181,25 @@ router.post('/trips/:tripId/cover', imageUpload.single('cover'), async (req, res
 });
 
 // ---------------------------------------------------------------- members
-router.post('/trips/:tripId/members', async (req, res) => {
+/**
+ * Owner invites someone by email. An existing account joins right away; an
+ * email with no account gets an invitation link to sign up and join.
+ */
+router.post('/trips/:tripId/members', inviteLimiter, async (req, res) => {
   const trip = await loadTripForOwner(req);
   const { email } = body(req, z.object({ email: z.email().toLowerCase() }));
-  const invitee = await UserModel.findOne({ email, isActive: true }).select('_id');
-  if (!invitee) throw ApiError.notFound('No member account uses this email - ask them to register first');
+  const invitee = await UserModel.findOne({ email }).select('_id isActive');
+  if (invitee && !invitee.isActive) throw ApiError.conflict('This account has been deactivated');
+  if (!invitee) {
+    await sendTripInvitation(trip, currentUser(req).id, email);
+    return send(res, await tripJson(trip), `No account uses ${email} yet - an invitation email was sent`);
+  }
   if (trip.members.some((m) => m.user.toString() === invitee._id.toString())) {
     throw ApiError.conflict('This person is already a participant');
   }
   trip.members.push({ user: invitee._id, role: 'editor', joinedAt: new Date() });
   await trip.save();
+  await TripInvitationModel.deleteOne({ trip: trip._id, email });
   send(res, await tripJson(trip), 'Participant added');
 });
 

@@ -42,4 +42,11 @@ export const env = {
   ratesApiUrl: str('RATES_API_URL', 'https://open.er-api.com/v6/latest'),
   osrmUrl: str('OSRM_URL', 'https://router.project-osrm.org'),
   nominatimUrl: str('NOMINATIM_URL', 'https://nominatim.openstreetmap.org'),
+  // Trip assistant (LLM). Provider: gemini | groq | openrouter | ollama | openai-compatible
+  ai: {
+    provider: str('AI_PROVIDER', 'gemini').toLowerCase(),
+    apiKey: str('AI_API_KEY', ''),
+    model: str('AI_MODEL', ''),
+    baseUrl: str('AI_BASE_URL', ''),
+  },
 };

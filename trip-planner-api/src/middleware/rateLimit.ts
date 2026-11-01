@@ -12,6 +12,24 @@ export const authLimiter = rateLimit({
   message: tooMany,
 });
 
+/** Trip invitations send emails: 20 per hour per IP so the API cannot be used to spam addresses. */
+export const inviteLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: tooMany,
+});
+
+/** Each assistant turn is one call to the (free-tier) LLM: 40 turns per 15 minutes per IP. */
+export const aiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 40,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: tooMany,
+});
+
 /** General API safety net. */
 export const apiLimiter = rateLimit({
   windowMs: 60 * 1000,

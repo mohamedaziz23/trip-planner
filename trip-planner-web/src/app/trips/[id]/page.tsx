@@ -3,22 +3,24 @@
 import Link from 'next/link';
 import { FileDown, ListChecks, Map, NotebookPen, Wallet } from 'lucide-react';
 import { useState } from 'react';
+import { InviteForm } from '@/components/trips/InviteForm';
 import { useTripContext } from '@/components/trips/TripContext';
 import { useToast } from '@/components/Toaster';
-import { Avatar, Badge, Button, Card } from '@/components/ui';
+import { Avatar, Badge, Button, Card, Modal } from '@/components/ui';
 import { download, errorMessage } from '@/lib/api';
 import { dayColor } from '@/lib/constants';
 import { capitalize, dayDate, formatDate, formatMoney, tripDays } from '@/lib/format';
 import { useChecklist, useExpenses, useJournal, usePlaces } from '@/lib/hooks';
 
 export default function TripOverviewPage() {
-  const { trip } = useTripContext();
+  const { trip, isOwner } = useTripContext();
   const toast = useToast();
   const places = usePlaces(trip._id) ?? [];
   const expenses = useExpenses(trip._id) ?? [];
   const checklist = useChecklist(trip._id) ?? [];
   const journal = useJournal(trip._id) ?? [];
   const [exporting, setExporting] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const days = tripDays(trip.startDate, trip.endDate);
   const spent = expenses.reduce((s, e) => s + e.amountInBase, 0);
@@ -105,9 +107,9 @@ export default function TripOverviewPage() {
                 </li>
               ))}
             </ul>
-            <Link href={`/trips/${trip._id}/settings`} className="mt-3 inline-block text-sm font-medium text-brand-dark hover:underline">
+            <button type="button" onClick={() => setInviteOpen(true)} className="mt-3 inline-block text-sm font-medium text-brand-dark hover:underline">
               Invite people →
-            </Link>
+            </button>
           </Card>
           <Card>
             <h2 className="mb-3 font-semibold">Preferences</h2>
@@ -134,6 +136,14 @@ export default function TripOverviewPage() {
           </Card>
         </div>
       </div>
+
+      <Modal open={inviteOpen} onClose={() => setInviteOpen(false)} title="Invite people">
+        {isOwner ? (
+          <InviteForm trip={trip} onInvited={() => setInviteOpen(false)} />
+        ) : (
+          <p className="text-sm text-muted">Only the trip owner can invite people to this trip.</p>
+        )}
+      </Modal>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
-import { ACCOMMODATIONS, ACTIVITIES, COUNTRIES, CURRENCIES, SPECIAL_NEEDS, TRANSPORTS, TRIP_TYPES } from '@/lib/constants';
+import { ACCOMMODATIONS, ACTIVITIES, COUNTRIES, CURRENCIES, SPECIAL_NEEDS, TRANSPORTS, TRIP_TYPES, countryName } from '@/lib/constants';
 import { toDateInput } from '@/lib/format';
 import type { Trip, TripPreferences } from '@/lib/types';
 import { Button, Chip, Field, Input, Select } from '@/components/ui';
@@ -32,25 +32,31 @@ function toggle(list: string[], value: string) {
 
 export function TripForm({
   initial,
+  prefill,
   defaults,
   submitLabel,
   onSubmit,
 }: {
   initial?: Trip;
+  /** values proposed by the AI assistant, to review and edit before creating */
+  prefill?: TripFormValues;
   defaults?: { baseCurrency?: string };
   submitLabel: string;
   onSubmit: (values: TripFormValues) => Promise<void>;
 }) {
-  const [values, setValues] = useState<TripFormValues>(() => ({
-    title: initial?.title ?? '',
-    destination: initial?.destination ?? '',
-    country: initial?.country ?? 'FR',
-    startDate: toDateInput(initial?.startDate),
-    endDate: toDateInput(initial?.endDate),
-    budget: initial?.budget ?? 0,
-    baseCurrency: initial?.baseCurrency ?? defaults?.baseCurrency ?? 'EUR',
-    preferences: initial?.preferences ? { ...DEFAULT_PREFS, ...initial.preferences } : DEFAULT_PREFS,
-  }));
+  const [values, setValues] = useState<TripFormValues>(() => {
+    if (prefill) return { ...prefill, preferences: { ...DEFAULT_PREFS, ...prefill.preferences } };
+    return {
+      title: initial?.title ?? '',
+      destination: initial?.destination ?? '',
+      country: initial?.country ?? 'FR',
+      startDate: toDateInput(initial?.startDate),
+      endDate: toDateInput(initial?.endDate),
+      budget: initial?.budget ?? 0,
+      baseCurrency: initial?.baseCurrency ?? defaults?.baseCurrency ?? 'EUR',
+      preferences: initial?.preferences ? { ...DEFAULT_PREFS, ...initial.preferences } : DEFAULT_PREFS,
+    };
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
@@ -96,6 +102,8 @@ export function TripForm({
           <Field label="Country">
             {(id) => (
               <Select id={id} value={values.country} onChange={(e) => set('country', e.target.value)}>
+                {/* the assistant can propose a country that is not in the short list */}
+                {!COUNTRIES.some(([code]) => code === values.country) && <option value={values.country}>{countryName(values.country)}</option>}
                 {COUNTRIES.map(([code, name]) => (
                   <option key={code} value={code}>
                     {name}
