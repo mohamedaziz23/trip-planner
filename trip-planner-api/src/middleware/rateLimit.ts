@@ -1,4 +1,4 @@
-import { rateLimit } from 'express-rate-limit';
+import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import type { Envelope } from '../lib/http';
 
 const tooMany: Envelope<null> = { data: null, message: 'Too many requests, please try again later', errors: null };
@@ -45,5 +45,15 @@ export const captchaLimiter = rateLimit({
   limit: 30,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
+  message: tooMany,
+});
+
+/** Generative AI (Trip Story): expensive, so keep it to 10 per hour per user. */
+export const aiStoryLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ''),
   message: tooMany,
 });

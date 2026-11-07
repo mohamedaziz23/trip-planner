@@ -42,6 +42,8 @@ export const env = {
   },
   // set CAPTCHA_ENABLED=false to switch captchas off (automated tests)
   captchaEnabled: str('CAPTCHA_ENABLED', 'true') !== 'false',
+  geminiApiKey: str('GEMINI_API_KEY', ''),
+  geminiModel: str('GEMINI_MODEL', 'gemini-2.5-flash'),
   ratesApiUrl: str('RATES_API_URL', 'https://open.er-api.com/v6/latest'),
   osrmUrl: str('OSRM_URL', 'https://router.project-osrm.org'),
   nominatimUrl: str('NOMINATIM_URL', 'https://nominatim.openstreetmap.org'),
