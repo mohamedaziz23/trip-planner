@@ -51,3 +51,14 @@ export async function storeImage(file: Express.Multer.File, folder: string): Pro
   await fs.promises.writeFile(path.join(UPLOAD_DIR, name), file.buffer);
   return `/uploads/${name}`;
 }
+
+/**
+ * Deletes an image previously stored on disk by storeImage (local mode only).
+ * Cloudinary URLs and unknown paths are ignored; errors are not fatal.
+ */
+export async function removeStoredImage(url: string | null | undefined): Promise<void> {
+  if (!url?.startsWith('/uploads/')) return;
+  const name = path.basename(url);
+  if (!/^[a-z]+-[a-f0-9]{24}\.[a-z0-9]+$/i.test(name)) return;
+  await fs.promises.unlink(path.join(UPLOAD_DIR, name)).catch(() => undefined);
+}

@@ -15,6 +15,7 @@ export const env = {
   port: Number(str('PORT', '4000')),
   apiPublicUrl: str('API_PUBLIC_URL', 'http://localhost:4000'),
   clientOrigin: str('CLIENT_ORIGIN', 'http://localhost:3000'),
+  trustProxy: Number(str('TRUST_PROXY', '1')),
   mongoUri: str('MONGODB_URI', 'mongodb://127.0.0.1:27017/trip-planner?directConnection=true'),
   jwtAccessSecret: str('JWT_ACCESS_SECRET', nodeEnv === 'production' ? undefined : 'dev-access-secret'),
   jwtRefreshSecret: str('JWT_REFRESH_SECRET', nodeEnv === 'production' ? undefined : 'dev-refresh-secret'),
@@ -39,6 +40,8 @@ export const env = {
     pass: str('SMTP_PASS', ''),
     from: str('MAIL_FROM', 'Trip Planner <no-reply@tripplanner.local>'),
   },
+  // set CAPTCHA_ENABLED=false to switch captchas off (automated tests)
+  captchaEnabled: str('CAPTCHA_ENABLED', 'true') !== 'false',
   ratesApiUrl: str('RATES_API_URL', 'https://open.er-api.com/v6/latest'),
   osrmUrl: str('OSRM_URL', 'https://router.project-osrm.org'),
   nominatimUrl: str('NOMINATIM_URL', 'https://nominatim.openstreetmap.org'),

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { env } from '../../config/env';
@@ -16,21 +16,39 @@ import {
   verifyRefreshToken,
 } from '../../lib/tokens';
 import { sendMail } from '../../lib/mailer';
-import { authLimiter } from '../../middleware/rateLimit';
-import { UserModel, type UserDoc } from './user.model';
+import { authLimiter, captchaLimiter } from '../../middleware/rateLimit';
+import { clientIp, deviceLabel } from '../../lib/clientInfo';
+import { LOGIN_HISTORY_SIZE, UserModel, type UserDoc } from './user.model';
+import { assertCaptcha, clearLoginFailures, createCaptcha, loginNeedsCaptcha, recordLoginFailure } from './captcha.service';
 
 export const BCRYPT_COST = 12;
 export const passwordSchema = z.string().min(8, 'Password must be at least 8 characters').max(128);
 
 const router = Router();
 
-async function startSession(res: Parameters<typeof send>[0], user: UserDoc) {
+/** Optional captcha fields accepted by the protected forms. */
+const captchaFields = { captchaId: z.string().max(64).optional(), captchaAnswer: z.string().max(20).optional() };
+
+/** Opens a session and records where the user connected from (IP, device, time). */
+async function startSession(req: Request, res: Response, user: UserDoc, method: 'login' | 'register') {
   const refresh = issueRefreshToken(user);
+  const ip = clientIp(req);
   user.lastLoginAt = new Date();
+  user.lastLoginIp = ip;
+  user.loginHistory = [{ ip, device: deviceLabel(req), method, at: user.lastLoginAt }, ...user.loginHistory].slice(
+    0,
+    LOGIN_HISTORY_SIZE,
+  ) as typeof user.loginHistory;
   await user.save();
   setRefreshCookie(res, refresh);
   return { user: user.toJSON(), accessToken: signAccessToken(user) };
 }
+
+/** New captcha challenge (SVG image + id). The answer is never sent to the client. */
+router.get('/captcha', captchaLimiter, (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  send(res, createCaptcha());
+});
 
 router.post('/register', authLimiter, async (req, res) => {
   const input = body(
@@ -41,8 +59,10 @@ router.post('/register', authLimiter, async (req, res) => {
       password: passwordSchema,
       baseCurrency: z.string().length(3).toUpperCase().optional(),
       homeCountry: z.string().length(2).toUpperCase().optional(),
+      ...captchaFields,
     }),
   );
+  assertCaptcha(input);
   if (await UserModel.exists({ email: input.email })) {
     throw new ApiError(409, 'An account already exists with this email', [
       { path: 'email', message: 'Email already registered' },
@@ -55,16 +75,22 @@ router.post('/register', authLimiter, async (req, res) => {
     baseCurrency: input.baseCurrency ?? 'EUR',
     homeCountry: input.homeCountry ?? null,
   });
-  created(res, await startSession(res, user), 'Account created');
+  created(res, await startSession(req, res, user, 'register'), 'Account created');
 });
 
 router.post('/login', authLimiter, async (req, res) => {
-  const input = body(req, z.object({ email: z.email().toLowerCase(), password: z.string().min(1) }));
+  const input = body(req, z.object({ email: z.email().toLowerCase(), password: z.string().min(1), ...captchaFields }));
+  // after 3 failed attempts for this email, a captcha is required
+  if (loginNeedsCaptcha(input.email)) assertCaptcha(input);
   const user = await UserModel.findOne({ email: input.email });
   const valid = user ? await bcrypt.compare(input.password, user.passwordHash) : false;
-  if (!user || !valid) throw ApiError.unauthorized('Invalid email or password');
+  if (!user || !valid) {
+    recordLoginFailure(input.email);
+    throw new ApiError(401, 'Invalid email or password', null, { captchaRequired: loginNeedsCaptcha(input.email) });
+  }
   if (!user.isActive) throw ApiError.forbidden('This account has been deactivated');
-  send(res, await startSession(res, user), 'Logged in');
+  clearLoginFailures(input.email);
+  send(res, await startSession(req, res, user, 'login'), 'Logged in');
 });
 
 /** Exchanges the refresh cookie for a new access token; the refresh token is rotated on use. */
@@ -111,7 +137,8 @@ router.post('/logout', async (req, res) => {
 });
 
 router.post('/forgot-password', authLimiter, async (req, res) => {
-  const { email } = body(req, z.object({ email: z.email().toLowerCase() }));
+  const { email, ...captcha } = body(req, z.object({ email: z.email().toLowerCase(), ...captchaFields }));
+  assertCaptcha(captcha);
   const user = await UserModel.findOne({ email, isActive: true });
   if (user) {
     const token = randomToken();

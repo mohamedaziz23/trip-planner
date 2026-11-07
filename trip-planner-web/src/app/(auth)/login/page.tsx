@@ -6,6 +6,7 @@ import { Suspense, useEffect, useState, type FormEvent } from 'react';
 import { ApiError, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Alert, Button, Card, Field, Input } from '@/components/ui';
+import { Captcha, type CaptchaValue } from '@/components/Captcha';
 
 function LoginForm() {
   const { login, status } = useAuth();
@@ -16,6 +17,10 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // shown by the API after 3 failed attempts
+  const [captchaRequired, setCaptchaRequired] = useState(false);
+  const [captcha, setCaptcha] = useState<CaptchaValue | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
 
   useEffect(() => {
     if (status === 'authenticated') router.replace(next.startsWith('/') ? next : '/trips');
@@ -26,9 +31,13 @@ function LoginForm() {
     setLoading(true);
     setError(null);
     try {
-      await login(email, password);
+      await login(email, password, captchaRequired ? captcha : null);
     } catch (err) {
       setError(err instanceof ApiError && err.status === 429 ? 'Too many attempts, wait a few minutes.' : errorMessage(err));
+      if (err instanceof ApiError && (err.data as { captchaRequired?: boolean } | null)?.captchaRequired) {
+        setCaptchaRequired(true);
+        setCaptchaKey((k) => k + 1); // a challenge can be tried once
+      }
     } finally {
       setLoading(false);
     }
@@ -48,6 +57,7 @@ function LoginForm() {
             <Input id={id} type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
           )}
         </Field>
+        {captchaRequired && <Captcha value={captcha} onChange={setCaptcha} refreshKey={captchaKey} />}
         <div className="flex items-center justify-between text-sm">
           <Link href="/forgot-password" className="text-brand-dark underline-offset-2 hover:underline">
             Forgot password?

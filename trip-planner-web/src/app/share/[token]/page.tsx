@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { CalendarDays, MapPin, Users } from 'lucide-react';
+import { CalendarDays, FileDown, MapPin, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { EmptyState, LoadingBlock } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
@@ -62,6 +62,12 @@ export default function SharedTripPage() {
               <Users className="size-4" aria-hidden /> {trip.members.map((m) => m.name).join(', ')}
             </span>
           </p>
+          <a
+            href={`/api/v1/share/${token}/export`}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-brand-dark hover:bg-brand-light"
+          >
+            <FileDown className="size-4" aria-hidden /> Download PDF
+          </a>
         </div>
       </header>
 

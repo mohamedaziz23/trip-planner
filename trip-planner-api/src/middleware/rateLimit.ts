@@ -38,3 +38,12 @@ export const apiLimiter = rateLimit({
   legacyHeaders: false,
   message: tooMany,
 });
+
+/** New captcha images: 30 per minute per IP. */
+export const captchaLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: tooMany,
+});

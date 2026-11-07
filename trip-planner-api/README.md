@@ -28,7 +28,8 @@ src/
   lib/           envelope + errors, zod helpers, tokens, uploads, push, mail, last-write-wins check
   middleware/    auth (JWT), trip membership, rate limits, error handler
   modules/       one folder per module = one collection + its routes
-    users/       users          auth, profile, push subscription, admin
+    users/       users          auth, profile, push subscription, admin,
+                                PDF export + public share links (sharing.routes, export.service)
     trips/       trips          CRUD, members, share link, PDF export, cascade delete
     places/      places         CRUD, reorder, route (OSRM), geocoding (Nominatim)
     expenses/    expenses       CRUD, exchange rates, budget summary
@@ -44,15 +45,17 @@ src/
 |---|---|---|
 | Auth | `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout` | access token 15 min (Bearer), refresh token 7 days in an httpOnly cookie, rotated on use |
 | | `POST /auth/forgot-password`, `/auth/reset-password` | link printed in the console when SMTP is not configured |
-| Users | `GET/PATCH/DELETE /users/me` | delete anonymises forum posts and deletes owned trips |
-| | `POST /users/me/avatar` (multipart `avatar`), `PATCH /users/me/password`, `PATCH /users/me/notifications` | |
+| | `GET /auth/captcha` | self-hosted SVG captcha (5 min, single use); required on register and forgot-password, and on login after 3 failures for the same email |
+| Users | `GET/PATCH/DELETE /users/me` | delete anonymises forum posts and deletes owned trips; includes `lastLoginIp` and `loginHistory` (last 10 logins: IP, device, date) |
+| | `POST/DELETE /users/me/avatar` (multipart `avatar`), `PATCH /users/me/password`, `PATCH /users/me/notifications` | replacing or removing the photo deletes the old file (local storage) |
 | | `POST/DELETE /users/me/push-subscription`, `GET /push/public-key` | |
+| Sharing (module 1) | `GET /trips/:tripId/export` | itinerary PDF (members): summary, QR code to the share link, day-by-day table with costs, page numbers |
+| | `GET/POST/DELETE /trips/:tripId/share` | owner: read / enable (idempotent) / revoke the public link; returns the URL and a QR code (SVG) |
+| | `GET /share/:token`, `GET /share/:token/export` | public read-only itinerary and PDF (no budget, no costs); 32-byte random token |
 | Admin | `GET /admin/users`, `PATCH /admin/users/:id`, `GET /admin/stats` | admin role |
 | Trips | `GET/POST /trips`, `GET/PATCH/DELETE /trips/:tripId` | creation generates the checklist; preference changes regenerate it |
 | | `GET /trips/:tripId/full` | trip + all children, used for offline copies |
 | | `POST /trips/:tripId/cover`, `POST /trips/:tripId/members`, `DELETE /trips/:tripId/members/:userId` | |
-| | `POST/DELETE /trips/:tripId/share`, `GET /share/:token` (public) | 32-byte random token, revocable |
-| | `GET /trips/:tripId/export` | itinerary as PDF |
 | Places | `GET/POST /trips/:tripId/places`, `GET/PATCH/DELETE /trips/:tripId/places/:placeId` | list paginated at 50 |
 | | `PUT /trips/:tripId/places/reorder`, `GET /trips/:tripId/route?day=N`, `GET /geocode?q=` | |
 | Expenses | `GET/POST /trips/:tripId/expenses`, `GET/PATCH/DELETE …/expenses/:expenseId` | stored in original + base currency |
@@ -65,6 +68,11 @@ src/
 | | `POST /forum/posts`, `PATCH/DELETE /forum/posts/:postId`, `POST …/vote`, `POST/DELETE …/follow`, `POST …/report` | |
 | | `POST /forum/posts/:postId/replies`, `PATCH/DELETE /forum/replies/:replyId`, `POST …/vote`, `POST …/report` | one reply per minute, comments one level, 500 chars |
 | | `GET /forum/moderation`, `POST /forum/moderation/posts/:postId`, `POST /forum/moderation/replies/:replyId` | admin: hide, unhide, lock, unlock, delete, dismiss |
+
+### Captcha and client IP
+
+- Set `CAPTCHA_ENABLED=false` to switch captchas off (automated tests). Pending challenges live in memory, so they assume a single API instance.
+- The client IP is read from `X-Forwarded-For` with `TRUST_PROXY` (default 1). The Next.js proxy forwards headers without adding an entry: in production put a reverse proxy (nginx with `$proxy_add_x_forwarded_for`, or the hosting platform) in front of Next so the real client IP is recorded. Locally it is `127.0.0.1`. The IP is informational only.
 
 ### Offline sync contract
 

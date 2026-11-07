@@ -1,16 +1,18 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Camera } from 'lucide-react';
+import { MonitorSmartphone } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { RequireAuth } from '@/components/AppShell';
+import { AvatarEditor } from '@/components/AvatarEditor';
 import { useToast } from '@/components/Toaster';
-import { Alert, Avatar, Button, Card, Field, Input, Modal, PageHeader, Select } from '@/components/ui';
+import { Alert, Badge, Button, Card, Field, Input, Modal, PageHeader, Select } from '@/components/ui';
 import { ApiError, api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { COUNTRIES, CURRENCIES } from '@/lib/constants';
 import { currentSubscription, disablePush, enablePush, pushSupported } from '@/lib/push';
 import { useSyncStatus } from '@/lib/sync';
+import { formatDateTime } from '@/lib/format';
 import type { User } from '@/lib/types';
 
 function ProfileForm({ user }: { user: User }) {
@@ -35,28 +37,10 @@ function ProfileForm({ user }: { user: User }) {
     }
   }
 
-  async function uploadAvatar(file: File | undefined) {
-    if (!file) return;
-    const form = new FormData();
-    form.append('avatar', file);
-    try {
-      setUser(await api<User>('/users/me/avatar', { method: 'POST', form }));
-      toast('Avatar updated');
-    } catch (err) {
-      toast(errorMessage(err), 'error');
-    }
-  }
-
   return (
     <Card className="p-6">
       <h2 className="mb-4 text-lg font-semibold">Profile</h2>
-      <div className="mb-6 flex items-center gap-4">
-        <Avatar name={user.name} url={user.avatarUrl} size={64} />
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm hover:bg-surface">
-          <Camera className="size-4" aria-hidden /> Change photo
-          <input type="file" accept="image/*" className="sr-only" onChange={(e) => uploadAvatar(e.target.files?.[0])} />
-        </label>
-      </div>
+      <AvatarEditor user={user} />
       <form onSubmit={save} className="space-y-4">
         <Field label="Name">{(id) => <Input id={id} value={name} onChange={(e) => setName(e.target.value)} />}</Field>
         <Field label="Email" hint="The email cannot be changed">
@@ -172,6 +156,58 @@ function NotificationSettings({ user }: { user: User }) {
   );
 }
 
+/** Last connections of the account (IP address, device, date), recorded by the API at each login. */
+function RecentConnections({ user }: { user: User }) {
+  const { setUser } = useAuth();
+  const history = user.loginHistory ?? [];
+
+  // refresh from the API so the list includes connections made on other devices
+  useEffect(() => {
+    api<User>('/users/me').then(setUser).catch(() => undefined);
+  }, [setUser]);
+
+  return (
+    <Card className="p-6">
+      <h2 className="mb-1 text-lg font-semibold">Recent connections</h2>
+      <p className="mb-4 text-sm text-muted">
+        IP address and device of your last {history.length || 10} logins. If you do not recognise one, change your password.
+      </p>
+      {history.length === 0 ? (
+        <p className="text-sm text-muted">No connection recorded yet — it appears after your next login.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="text-xs uppercase text-muted">
+              <tr>
+                <th className="py-2 pr-4">Date</th>
+                <th className="py-2 pr-4">IP address</th>
+                <th className="py-2 pr-4">Device</th>
+                <th className="py-2">Type</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {history.map((h, i) => (
+                <tr key={h.at + i}>
+                  <td className="py-2 pr-4 whitespace-nowrap">
+                    {formatDateTime(h.at)} {i === 0 && <Badge tone="brand">Latest</Badge>}
+                  </td>
+                  <td className="py-2 pr-4 font-mono text-xs">{h.ip}</td>
+                  <td className="py-2 pr-4">
+                    <span className="flex items-center gap-1.5">
+                      <MonitorSmartphone className="size-4 text-muted" aria-hidden /> {h.device || 'Unknown'}
+                    </span>
+                  </td>
+                  <td className="py-2">{h.method === 'register' ? 'Sign-up' : 'Login'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function PasswordForm() {
   const toast = useToast();
   const [currentPassword, setCurrent] = useState('');
@@ -273,6 +309,7 @@ function Profile() {
       {!online && <Alert tone="warn">Offline — profile changes need a connection.</Alert>}
       <ProfileForm user={user} />
       <NotificationSettings user={user} />
+      <RecentConnections user={user} />
       <PasswordForm />
       <DeleteAccount />
     </div>

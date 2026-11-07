@@ -13,8 +13,18 @@ export interface User {
   pushEnabled: boolean;
   notificationPrefs?: { forumReplies: boolean; mutedPosts: string[] };
   lastLoginAt?: string | null;
+  lastLoginIp?: string | null;
+  /** most recent first, last 10 connections */
+  loginHistory?: LoginEvent[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface LoginEvent {
+  ip: string;
+  device: string;
+  method: 'login' | 'register';
+  at: string;
 }
 
 export interface UserRef {
