@@ -220,6 +220,7 @@ function UsersTable() {
                 <th className="px-4 py-2">User</th>
                 <th className="px-4 py-2">Role</th>
                 <th className="px-4 py-2">Joined</th>
+                <th className="px-4 py-2">Last connection</th>
                 <th className="px-4 py-2">Status</th>
                 <th className="px-4 py-2">
                   <span className="sr-only">Actions</span>
@@ -240,6 +241,16 @@ function UsersTable() {
                   </td>
                   <td className="px-4 py-2 capitalize">{u.role}</td>
                   <td className="px-4 py-2 text-muted">{formatDate(u.createdAt)}</td>
+                  <td className="px-4 py-2 text-muted">
+                    {u.lastLoginAt ? (
+                      <>
+                        <span className="font-mono text-xs">{u.lastLoginIp ?? '—'}</span>
+                        <span className="block text-xs">{formatDate(u.lastLoginAt)}</span>
+                      </>
+                    ) : (
+                      'Never'
+                    )}
+                  </td>
                   <td className="px-4 py-2">{u.isActive ? <Badge tone="success">Active</Badge> : <Badge tone="danger">Deactivated</Badge>}</td>
                   <td className="px-4 py-2 text-right">
                     {u._id !== me?._id && (

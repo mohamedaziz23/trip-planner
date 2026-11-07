@@ -12,10 +12,16 @@ interface AuthContextValue {
   status: AuthStatus;
   /** true when we trust the cached user because the API is unreachable */
   offlineSession: boolean;
-  login(email: string, password: string): Promise<User>;
-  register(input: { name: string; email: string; password: string; baseCurrency?: string; homeCountry?: string }): Promise<User>;
+  login(email: string, password: string, captcha?: CaptchaFields | null): Promise<User>;
+  register(input: { name: string; email: string; password: string; baseCurrency?: string; homeCountry?: string } & Partial<CaptchaFields>): Promise<User>;
   logout(): Promise<void>;
   setUser(user: User): void;
+}
+
+/** Solved captcha sent with protected forms (see components/Captcha.tsx). */
+export interface CaptchaFields {
+  captchaId: string;
+  captchaAnswer: string;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -100,10 +106,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       status,
       offlineSession,
       setUser,
-      async login(email, password) {
+      async login(email, password, captcha) {
         const session = await api<{ user: User; accessToken: string }>('/auth/login', {
           method: 'POST',
-          body: { email, password },
+          body: { email, password, ...(captcha ?? {}) },
           auth: false,
         });
         return startSession(session);

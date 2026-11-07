@@ -18,10 +18,12 @@ import checklistRoutes from './modules/checklist/checklist.routes';
 import journalRoutes from './modules/journal/journal.routes';
 import forumRoutes from './modules/forum/forum.routes';
 import uploadRoutes from './modules/uploads/upload.routes';
+import sharingRoutes from './modules/users/sharing.routes';
 
 export function createApp() {
   const app = express();
-  app.set('trust proxy', 1);
+  // X-Forwarded-For entries to trust for req.ip (see TRUST_PROXY in .env.example)
+  app.set('trust proxy', env.trustProxy);
   app.disable('x-powered-by');
 
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
@@ -39,6 +41,7 @@ export function createApp() {
   api.use('/auth', authRoutes);
   api.use('/admin', adminRoutes);
   api.use(userRoutes);
+  api.use(sharingRoutes); // module 1: PDF export + public share links
   api.use(tripRoutes);
   api.use(placeRoutes);
   api.use(expenseRoutes);

@@ -7,6 +7,7 @@ import { ApiError, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { COUNTRIES, CURRENCIES } from '@/lib/constants';
 import { Alert, Button, Card, Field, Input, Select } from '@/components/ui';
+import { Captcha, type CaptchaValue } from '@/components/Captcha';
 
 export default function RegisterPage() {
   const { register, status } = useAuth();
@@ -14,6 +15,8 @@ export default function RegisterPage() {
   const [form, setForm] = useState({ name: '', email: '', password: '', baseCurrency: 'EUR', homeCountry: 'TN' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [captcha, setCaptcha] = useState<CaptchaValue | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -28,15 +31,17 @@ export default function RegisterPage() {
     if (form.name.trim().length < 2) local.name = 'Enter your name';
     if (!/^\S+@\S+\.\S+$/.test(form.email)) local.email = 'Enter a valid email';
     if (form.password.length < 8) local.password = 'At least 8 characters';
+    if (!captcha?.captchaAnswer.trim()) local.captcha = 'Type the characters of the image';
     setErrors(local);
     if (Object.keys(local).length) return;
     setLoading(true);
     setError(null);
     try {
-      await register(form);
+      await register({ ...form, ...captcha });
     } catch (err) {
       if (err instanceof ApiError && err.errors) setErrors(Object.fromEntries(err.errors.map((x) => [x.path, x.message])));
       setError(errorMessage(err));
+      setCaptchaKey((k) => k + 1); // the challenge was consumed: load a new one
     } finally {
       setLoading(false);
     }
@@ -79,6 +84,7 @@ export default function RegisterPage() {
             )}
           </Field>
         </div>
+        <Captcha value={captcha} onChange={setCaptcha} refreshKey={captchaKey} error={errors.captcha} />
         <Button type="submit" loading={loading} className="w-full">
           Sign up
         </Button>

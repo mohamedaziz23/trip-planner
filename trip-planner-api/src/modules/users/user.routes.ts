@@ -5,7 +5,7 @@ import { withTransaction } from '../../config/db';
 import { ApiError, send } from '../../lib/http';
 import { body } from '../../lib/validate';
 import { clearRefreshCookie } from '../../lib/tokens';
-import { imageUpload, storeImage } from '../../lib/upload';
+import { imageUpload, removeStoredImage, storeImage } from '../../lib/upload';
 import { env } from '../../config/env';
 import { pushEnabled } from '../../lib/push';
 import { currentUser, requireAuth } from '../../middleware/auth';
@@ -53,9 +53,20 @@ router.patch('/users/me', async (req, res) => {
 router.post('/users/me/avatar', imageUpload.single('avatar'), async (req, res) => {
   if (!req.file) throw ApiError.badRequest('An image file named "avatar" is required');
   const user = await loadMe(currentUser(req).id);
+  const previous = user.avatarUrl;
   user.avatarUrl = await storeImage(req.file, 'avatars');
   await user.save();
+  await removeStoredImage(previous); // the old photo is no longer referenced
   send(res, user.toJSON(), 'Avatar updated');
+});
+
+router.delete('/users/me/avatar', async (req, res) => {
+  const user = await loadMe(currentUser(req).id);
+  const previous = user.avatarUrl;
+  user.avatarUrl = null;
+  await user.save();
+  await removeStoredImage(previous);
+  send(res, user.toJSON(), 'Avatar removed');
 });
 
 router.patch('/users/me/password', async (req, res) => {

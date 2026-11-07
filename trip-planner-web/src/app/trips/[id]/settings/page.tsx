@@ -1,10 +1,11 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Copy, ImagePlus, Link2, Link2Off, LogOut, Trash2, UserPlus, X } from 'lucide-react';
+import { ImagePlus, LogOut, Trash2, UserPlus, X } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useTripContext } from '@/components/trips/TripContext';
 import { TripForm, type TripFormValues } from '@/components/trips/TripForm';
+import { ShareLinkCard } from '@/components/trips/ShareLinkCard';
 import { useToast } from '@/components/Toaster';
 import { Alert, Avatar, Badge, Button, Card, Field, Input } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
@@ -22,9 +23,7 @@ export default function TripSettingsPage() {
   const [email, setEmail] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [shareBusy, setShareBusy] = useState(false);
 
-  const shareUrl = trip.shareToken ? `${typeof window !== 'undefined' ? window.location.origin : ''}/share/${trip.shareToken}` : null;
 
   async function save(values: TripFormValues) {
     await updateDoc('trips', trip._id, trip._id, {
@@ -67,24 +66,6 @@ export default function TripSettingsPage() {
       } else await applyServerTrip(next);
     } catch (err) {
       toast(errorMessage(err), 'error');
-    }
-  }
-
-  async function toggleShare(enable: boolean) {
-    setShareBusy(true);
-    try {
-      if (enable) {
-        const { shareToken } = await api<{ shareToken: string }>(`/trips/${trip._id}/share`, { method: 'POST' });
-        await db.trips.update(trip._id, { shareToken });
-      } else {
-        await api(`/trips/${trip._id}/share`, { method: 'DELETE' });
-        await db.trips.update(trip._id, { shareToken: undefined });
-        toast('Share link revoked');
-      }
-    } catch (err) {
-      toast(errorMessage(err), 'error');
-    } finally {
-      setShareBusy(false);
     }
   }
 
@@ -157,36 +138,7 @@ export default function TripSettingsPage() {
         )}
       </Card>
 
-      {isOwner && (
-        <Card className="p-6">
-          <h2 className="mb-1 text-lg font-semibold">Public share link</h2>
-          <p className="mb-3 text-sm text-muted">Anyone with the link can see the itinerary (read-only), without an account. Expenses and the journal stay private.</p>
-          {shareUrl ? (
-            <div className="space-y-3">
-              <div className="flex gap-2">
-                <Input readOnly value={shareUrl} aria-label="Share link" onFocus={(e) => e.target.select()} />
-                <Button
-                  variant="secondary"
-                  icon={<Copy className="size-4" aria-hidden />}
-                  onClick={async () => {
-                    await navigator.clipboard.writeText(shareUrl);
-                    toast('Link copied');
-                  }}
-                >
-                  Copy
-                </Button>
-              </div>
-              <Button variant="secondary" loading={shareBusy} disabled={!online} onClick={() => toggleShare(false)} icon={<Link2Off className="size-4" aria-hidden />}>
-                Revoke link
-              </Button>
-            </div>
-          ) : (
-            <Button loading={shareBusy} disabled={!online} onClick={() => toggleShare(true)} icon={<Link2 className="size-4" aria-hidden />}>
-              Create share link
-            </Button>
-          )}
-        </Card>
-      )}
+      {isOwner && <ShareLinkCard trip={trip} />}
 
       {isOwner && (
         <Card className="border-red-200 p-6">

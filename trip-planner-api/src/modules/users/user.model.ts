@@ -22,6 +22,19 @@ const refreshTokenSchema = new Schema(
   { _id: false },
 );
 
+/** One successful connection (login or registration): where and from what. */
+const loginEventSchema = new Schema(
+  {
+    ip: { type: String, required: true },
+    device: { type: String, default: '' },
+    method: { type: String, enum: ['login', 'register'], default: 'login' },
+    at: { type: Date, default: Date.now },
+  },
+  { _id: false },
+);
+
+export const LOGIN_HISTORY_SIZE = 10;
+
 const userSchema = new Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 80 },
@@ -43,6 +56,9 @@ const userSchema = new Schema(
     resetTokenHash: { type: String, default: null },
     resetTokenExpires: { type: Date, default: null },
     lastLoginAt: { type: Date, default: null },
+    lastLoginIp: { type: String, default: null },
+    // most recent first, capped at LOGIN_HISTORY_SIZE
+    loginHistory: { type: [loginEventSchema], default: [] },
   },
   {
     timestamps: true,

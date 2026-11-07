@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { withTransaction } from '../../config/db';
 import { ApiError, created, paginated, send } from '../../lib/http';
 import { assertNotStale } from '../../lib/sync';
-import { randomToken } from '../../lib/tokens';
 import { imageUpload, storeImage } from '../../lib/upload';
 import { assertObjectId, body, clientUpdatedAt, escapeRegex, listQuery, objectId, query, toSort } from '../../lib/validate';
 import { currentUser, requireAuth } from '../../middleware/auth';
@@ -16,7 +15,6 @@ import { JournalEntryModel } from '../journal/journal.model';
 import { syncChecklist } from '../checklist/generator';
 import { ACCOMMODATIONS, ACTIVITIES, SPECIAL_NEEDS, TRANSPORTS, TRIP_TYPES, TripModel, type TripDoc } from './trip.model';
 import { TRIP_POPULATE, deleteTripCascade } from './trip.service';
-import { renderTripPdf } from './export.pdf';
 
 const router = Router();
 
@@ -65,23 +63,6 @@ async function tripJson(trip: TripDoc) {
   await trip.populate(TRIP_POPULATE);
   return trip.toJSON();
 }
-
-// ---------------------------------------------------------------- public share page
-router.get('/share/:token', async (req, res) => {
-  const token = String(req.params.token ?? '');
-  if (!/^[a-f0-9]{64}$/.test(token)) throw ApiError.notFound('This share link is invalid or was revoked');
-  const trip = await TripModel.findOne({ shareToken: token })
-    .select('title destination country startDate endDate coverUrl baseCurrency members')
-    .populate({ path: 'members.user', select: 'name' });
-  if (!trip) throw ApiError.notFound('This share link is invalid or was revoked');
-  const places = await PlaceModel.find({ trip: trip._id })
-    .select('name lat lng address category day startTime durationMin notes order')
-    .sort({ day: 1, order: 1 })
-    .lean();
-  const json = trip.toJSON() as Record<string, unknown>;
-  json.members = trip.members.map((m) => ({ name: (m.user as unknown as { name?: string })?.name ?? 'Traveller' }));
-  send(res, { trip: json, places });
-});
 
 // ---------------------------------------------------------------- authenticated
 router.use('/trips', requireAuth);
@@ -201,33 +182,6 @@ router.delete('/trips/:tripId/members/:userId', async (req, res) => {
   trip.members = trip.members.filter((m) => m.user.toString() !== target) as typeof trip.members;
   await trip.save();
   send(res, await tripJson(trip), target === me ? 'You left the trip' : 'Participant removed');
-});
-
-// ---------------------------------------------------------------- share link & export
-router.post('/trips/:tripId/share', async (req, res) => {
-  const trip = await loadTripForOwner(req);
-  if (!trip.shareToken) {
-    trip.shareToken = randomToken();
-    await trip.save();
-  }
-  send(res, { shareToken: trip.shareToken }, 'Share link enabled');
-});
-
-router.delete('/trips/:tripId/share', async (req, res) => {
-  const trip = await loadTripForOwner(req);
-  trip.shareToken = undefined;
-  await trip.save();
-  send(res, null, 'Share link revoked');
-});
-
-router.get('/trips/:tripId/export', async (req, res) => {
-  const trip = await loadTripForMember(req);
-  const places = await PlaceModel.find({ trip: trip._id }).sort({ day: 1, order: 1 }).lean();
-  await trip.populate(TRIP_POPULATE);
-  const filename = `${trip.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase() || 'trip'}-itinerary.pdf`;
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-  renderTripPdf(trip, places, res);
 });
 
 export default router;

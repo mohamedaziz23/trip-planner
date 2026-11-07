@@ -4,23 +4,28 @@ import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { request, errorMessage } from '@/lib/api';
 import { Alert, Button, Card, Field, Input } from '@/components/ui';
+import { Captcha, type CaptchaValue } from '@/components/Captcha';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [captcha, setCaptcha] = useState<CaptchaValue | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!captcha?.captchaAnswer.trim()) return setError('Type the characters of the security check');
     setLoading(true);
     setError(null);
     try {
-      const res = await request('/auth/forgot-password', { method: 'POST', body: { email }, auth: false });
+      const res = await request('/auth/forgot-password', { method: 'POST', body: { email, ...captcha }, auth: false });
       setMessage(res.message);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
+      setCaptchaKey((k) => k + 1); // each challenge is single-use
       setLoading(false);
     }
   }
@@ -35,6 +40,7 @@ export default function ForgotPasswordPage() {
         <Field label="Email">
           {(id) => <Input id={id} type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />}
         </Field>
+        <Captcha value={captcha} onChange={setCaptcha} refreshKey={captchaKey} />
         <Button type="submit" loading={loading} className="w-full">
           Send reset link
         </Button>
