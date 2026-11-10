@@ -80,6 +80,26 @@ export function refreshSession(): Promise<string | null> {
   return refreshing;
 }
 
+/** Seconds before expiry of the in-memory access token (JWT `exp`), or 0 when unknown. */
+function secondsLeft(token: string) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))) as { exp?: number };
+    return payload.exp ? payload.exp - Date.now() / 1000 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * An access token valid for at least 30 more seconds, refreshed if needed.
+ * Used when the token must travel in a request body (Server Actions) instead
+ * of the Authorization header that request() manages.
+ */
+export async function freshAccessToken(): Promise<string | null> {
+  if (accessToken && secondsLeft(accessToken) > 30) return accessToken;
+  return refreshSession();
+}
+
 // ------------------------------------------------------------------ request helper
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';

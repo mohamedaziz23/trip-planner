@@ -2,19 +2,34 @@
 
 import { useRouter } from 'next/navigation';
 import { MonitorSmartphone } from 'lucide-react';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useActionState, useEffect, useState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { RequireAuth } from '@/components/AppShell';
 import { AvatarEditor } from '@/components/AvatarEditor';
 import { useToast } from '@/components/Toaster';
 import { Alert, Badge, Button, Card, Field, Input, Modal, PageHeader, Select } from '@/components/ui';
-import { ApiError, api, errorMessage } from '@/lib/api';
+import { ApiError, api, errorMessage, freshAccessToken } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { COUNTRIES, CURRENCIES } from '@/lib/constants';
 import { currentSubscription, disablePush, enablePush, pushSupported } from '@/lib/push';
 import { useSyncStatus } from '@/lib/sync';
 import { formatDateTime } from '@/lib/format';
 import type { User } from '@/lib/types';
+import { updateProfileAction, type ProfileFormState } from './actions';
 
+/** Submit button of the profile form: pending state comes from the form action (useFormStatus). */
+function SaveProfileButton() {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" loading={pending}>
+      {pending ? 'Saving on the server…' : 'Save profile'}
+    </Button>
+  );
+}
+
+const INITIAL_PROFILE_STATE: ProfileFormState = { status: 'idle', message: '', fieldErrors: {} };
+
+/** Profile form saved through a Server Action (app/profile/actions.ts), not a client fetch. */
 function ProfileForm({ user }: { user: User }) {
   const { setUser } = useAuth();
   const toast = useToast();
@@ -22,34 +37,45 @@ function ProfileForm({ user }: { user: User }) {
   const [baseCurrency, setCurrency] = useState(user.baseCurrency);
   const [homeCountry, setCountry] = useState(user.homeCountry ?? '');
   const [language, setLanguage] = useState(user.language);
-  const [saving, setSaving] = useState(false);
 
-  async function save(e: FormEvent) {
-    e.preventDefault();
-    setSaving(true);
+  // Client wrapper around the Server Action: attaches a valid access token
+  // (the server forwards it to the API), then applies the result locally.
+  const [state, formAction] = useActionState(async (prev: ProfileFormState, formData: FormData) => {
+    let token: string | null = null;
     try {
-      setUser(await api<User>('/users/me', { method: 'PATCH', body: { name, baseCurrency, homeCountry: homeCountry || null, language } }));
-      toast('Profile saved');
-    } catch (err) {
-      toast(errorMessage(err), 'error');
-    } finally {
-      setSaving(false);
+      token = await freshAccessToken();
+    } catch {
+      return { status: 'error', message: 'You are offline: saving the profile needs a connection.', fieldErrors: {} } satisfies ProfileFormState;
     }
-  }
+    formData.set('accessToken', token ?? '');
+    const next = await updateProfileAction(prev, formData);
+    if (next.status === 'success' && next.user) {
+      setUser(next.user);
+      toast('Profile saved');
+    }
+    return next;
+  }, INITIAL_PROFILE_STATE);
+
+  const err = state.fieldErrors;
 
   return (
     <Card className="p-6">
       <h2 className="mb-4 text-lg font-semibold">Profile</h2>
       <AvatarEditor user={user} />
-      <form onSubmit={save} className="space-y-4">
-        <Field label="Name">{(id) => <Input id={id} value={name} onChange={(e) => setName(e.target.value)} />}</Field>
+      <form action={formAction} className="space-y-4" noValidate>
+        {state.status !== 'idle' && (
+          <Alert tone={state.status === 'success' ? 'success' : 'error'}>{state.message}</Alert>
+        )}
+        <Field label="Name" error={err.name}>
+          {(id, d) => <Input id={id} name="name" aria-describedby={d} aria-invalid={Boolean(err.name)} value={name} onChange={(e) => setName(e.target.value)} />}
+        </Field>
         <Field label="Email" hint="The email cannot be changed">
           {(id, d) => <Input id={id} aria-describedby={d} value={user.email} disabled />}
         </Field>
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Home country" hint="Drives the “abroad” checklist items">
+          <Field label="Home country" hint="Drives the “abroad” checklist items" error={err.homeCountry}>
             {(id, d) => (
-              <Select id={id} aria-describedby={d} value={homeCountry} onChange={(e) => setCountry(e.target.value)}>
+              <Select id={id} name="homeCountry" aria-describedby={d} value={homeCountry} onChange={(e) => setCountry(e.target.value)}>
                 <option value="">Not set</option>
                 {COUNTRIES.map(([code, n]) => (
                   <option key={code} value={code}>
@@ -59,18 +85,18 @@ function ProfileForm({ user }: { user: User }) {
               </Select>
             )}
           </Field>
-          <Field label="Base currency">
-            {(id) => (
-              <Select id={id} value={baseCurrency} onChange={(e) => setCurrency(e.target.value)}>
+          <Field label="Base currency" error={err.baseCurrency}>
+            {(id, d) => (
+              <Select id={id} name="baseCurrency" aria-describedby={d} value={baseCurrency} onChange={(e) => setCurrency(e.target.value)}>
                 {CURRENCIES.map((c) => (
                   <option key={c}>{c}</option>
                 ))}
               </Select>
             )}
           </Field>
-          <Field label="Language" hint="The interface is English only for now">
+          <Field label="Language" hint="The interface is English only for now" error={err.language}>
             {(id, d) => (
-              <Select id={id} aria-describedby={d} value={language} onChange={(e) => setLanguage(e.target.value)}>
+              <Select id={id} name="language" aria-describedby={d} value={language} onChange={(e) => setLanguage(e.target.value)}>
                 <option value="en">English</option>
                 <option value="fr">Français</option>
                 <option value="ar">العربية</option>
@@ -79,9 +105,7 @@ function ProfileForm({ user }: { user: User }) {
           </Field>
         </div>
         <div className="flex justify-end">
-          <Button type="submit" loading={saving}>
-            Save profile
-          </Button>
+          <SaveProfileButton />
         </div>
       </form>
     </Card>
