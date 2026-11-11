@@ -1,0 +1,70 @@
+# Render Blueprint: Dashboard > New > Blueprint > pick this repo.
+# Values marked `sync: false` are asked for when the Blueprint is first applied.
+services:
+  # Express + MongoDB API
+  - type: web
+    name: trip-planner-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    rootDir: trip-planner-api
+    # --include=dev: TypeScript is a devDependency and NODE_ENV=production would skip it
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      # MongoDB Atlas connection string (Render has no managed MongoDB)
+      - key: MONGODB_URI
+        sync: false
+      # Public URL of the web service, e.g. https://trip-planner-web.onrender.com
+      - key: CLIENT_ORIGIN
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      # The browser talks to the Next.js origin only, so the cookie is first-party
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAMESITE
+        value: lax
+      # client -> Render edge -> Next.js -> Render edge -> API: two entries in X-Forwarded-For
+      - key: TRUST_PROXY
+        value: "2"
+      # Render's disk is wiped on every deploy/restart: uploads must go to Cloudinary
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      # Optional features (leave empty to disable)
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: AI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+
+  # Next.js front end (proxies /api/v1 and /uploads to the API)
+  - type: web
+    name: trip-planner-web
+    runtime: node
+    plan: free
+    region: frankfurt
+    rootDir: trip-planner-web
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Public URL of the API service, e.g. https://trip-planner-api.onrender.com
+      # Read at build time (rewrites): redeploy the web service after changing it.
+      - key: API_URL
+        sync: false
