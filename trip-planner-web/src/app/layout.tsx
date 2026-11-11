@@ -23,8 +23,9 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
+  // suppressHydrationWarning: browser extensions (QuillBot, Grammarly, …) inject attributes on <html> before hydration
   return (
-    <html lang="en" className="h-full antialiased">
+    <html lang="en" className="h-full antialiased" suppressHydrationWarning>
       <body className="flex min-h-full flex-col">
         <a href="#main" className="skip-link">
           Skip to content

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
-import { gemini, STORY_MODEL } from '../../lib/ai';
+import { gemini, STORY_MODEL, withAiRetry } from '../../lib/ai';
 import { UPLOAD_DIR } from '../../lib/upload';
 import type { TripDoc } from '../trips/trip.model';
 import type { JournalEntryDoc } from './journal.model';
@@ -90,16 +90,18 @@ export async function buildStoryBook(trip: TripDoc, entries: PopulatedEntry[]): 
     'and do not invent events that are not in the entries.';
 
   const [resp, photoLists] = await Promise.all([
-    gemini().models.generateContent({
-      model: STORY_MODEL,
-      contents: prompt,
-      config: {
-        systemInstruction: 'You are a travel writer who turns a group trip journal into a vivid, heartfelt photo story book.',
-        responseMimeType: 'application/json',
-        responseJsonSchema: chapterSchema,
-        maxOutputTokens: 8000,
-      },
-    }),
+    withAiRetry(() =>
+      gemini().models.generateContent({
+        model: STORY_MODEL,
+        contents: prompt,
+        config: {
+          systemInstruction: 'You are a travel writer who turns a group trip journal into a vivid, heartfelt photo story book.',
+          responseMimeType: 'application/json',
+          responseJsonSchema: chapterSchema,
+          maxOutputTokens: 8000,
+        },
+      }),
+    ),
     Promise.all(entries.map((e) => Promise.all(e.photos.map(loadPhoto)).then((ps) => ps.filter((p): p is Buffer => p !== null)))),
   ]);
 

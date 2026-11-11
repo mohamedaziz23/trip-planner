@@ -7,7 +7,7 @@ import { assertObjectId, body, clientUpdatedAt, objectId, query } from '../../li
 import { currentUser, requireAuth } from '../../middleware/auth';
 import { aiStoryLimiter } from '../../middleware/rateLimit';
 import { loadTripForMember } from '../../middleware/tripAccess';
-import { gemini, STORY_MODEL } from '../../lib/ai';
+import { gemini, STORY_MODEL, toAiError, withAiRetry } from '../../lib/ai';
 import { buildStoryBook, type PopulatedEntry } from './book';
 import { renderStoryBookPdf } from './export.book.pdf';
 import { renderStoryBookPptx } from './export.book.pptx';
@@ -114,20 +114,23 @@ router.post('/trips/:tripId/journal/story', aiStoryLimiter, async (req, res, nex
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Accel-Buffering', 'no');
   try {
-    const stream = await gemini().models.generateContentStream({
-      model: STORY_MODEL,
-      contents: prompt,
-      config: {
-        systemInstruction: 'You are a travel writer who turns a group trip journal into a vivid, heartfelt story.',
-        maxOutputTokens: 8000,
-      },
-    });
+    const stream = await withAiRetry(() =>
+      gemini().models.generateContentStream({
+        model: STORY_MODEL,
+        contents: prompt,
+        config: {
+          systemInstruction: 'You are a travel writer who turns a group trip journal into a vivid, heartfelt story.',
+          maxOutputTokens: 8000,
+        },
+      }),
+    );
     for await (const chunk of stream) {
       if (chunk.text) res.write(chunk.text);
     }
     res.end();
   } catch (err) {
-    if (!res.headersSent) return next(err);
+    // Before any byte is written we can still answer with a clean JSON error.
+    if (!res.headersSent) return next(toAiError(err));
     res.end();
   }
 });
@@ -151,17 +154,19 @@ router.post('/trips/:tripId/journal/enhance', aiStoryLimiter, async (req, res) =
     properties: { title: { type: 'string' }, body: { type: 'string' } },
     required: ['title', 'body'],
   };
-  const resp = await gemini().models.generateContent({
-    model: STORY_MODEL,
-    contents: `Title: ${input.title || '(none)'}\n\nEntry:\n${input.body}`,
-    config: {
-      systemInstruction:
-        'You are an editor for a personal travel journal. Correct spelling and grammar and gently polish the wording so it reads clearly and vividly, while keeping the author\'s first-person voice, tone and facts. Do not invent events, places or details, and keep it about the same length. Return an improved title (short; empty string if there was none) and the improved entry body.',
-      responseMimeType: 'application/json',
-      responseJsonSchema: schema,
-      maxOutputTokens: 4000,
-    },
-  });
+  const resp = await withAiRetry(() =>
+    gemini().models.generateContent({
+      model: STORY_MODEL,
+      contents: `Title: ${input.title || '(none)'}\n\nEntry:\n${input.body}`,
+      config: {
+        systemInstruction:
+          'You are an editor for a personal travel journal. Correct spelling and grammar and gently polish the wording so it reads clearly and vividly, while keeping the author\'s first-person voice, tone and facts. Do not invent events, places or details, and keep it about the same length. Return an improved title (short; empty string if there was none) and the improved entry body.',
+        responseMimeType: 'application/json',
+        responseJsonSchema: schema,
+        maxOutputTokens: 4000,
+      },
+    }),
+  );
   let out = { title: input.title, body: input.body };
   try {
     const parsed = JSON.parse(resp.text ?? '{}');
